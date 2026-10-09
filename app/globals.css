@@ -239,6 +239,11 @@ button{cursor:pointer}
 .contact-form .button:disabled{opacity:.65;cursor:wait}
 .form-message{font-size:11px;margin:13px 0 0}
 .form-message.success{color:#287c5a}.form-message.error{color:#a34242}
+.delivery-status{padding:12px 15px;margin:12px 0 0;border:1px solid var(--line);border-radius:4px;background:#f7faf8;color:#52635a;font-size:11px;line-height:1.8;list-style:none}
+.delivery-status li+li{margin-top:4px}
+.delivery-status strong{color:var(--navy)}
+.whatsapp-fallback{margin-top:12px;border-color:#287c5a;color:#1f704d;background:#f1f8f3}
+.whatsapp-fallback:hover{background:#e4f1e8}
 .article-page{max-width:760px;margin:0 auto}
 .article-page h1{font:600 clamp(35px,5vw,51px)/1.2 var(--serif);letter-spacing:-2px;color:var(--navy);margin:15px 0}
 .article-page .article-meta{font-size:11px;margin:17px 0 29px}

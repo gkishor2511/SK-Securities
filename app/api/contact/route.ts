@@ -17,6 +17,8 @@ const submissions = new Map<string, number[]>();
 const windowMs = 10 * 60 * 1000;
 const maxSubmissions = 5;
 
+type DeliveryStatus = "sent" | "failed" | "not_configured";
+
 function originIsValid(request: NextRequest) {
   const origin = request.headers.get("origin");
   if (!origin) return true;
@@ -24,6 +26,86 @@ function originIsValid(request: NextRequest) {
     return new URL(origin).host === request.headers.get("host");
   } catch {
     return false;
+  }
+}
+
+async function sendEmail(data: z.infer<typeof schema>): Promise<DeliveryStatus> {
+  const apiKey = process.env.RESEND_API_KEY;
+  const to = process.env.CONTACT_TO_EMAIL || process.env.NEXT_PUBLIC_COMPANY_EMAIL || "reddykishor555@gmail.com";
+  const from = process.env.CONTACT_FROM_EMAIL;
+  if (!apiKey || !from) return "not_configured";
+
+  try {
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        from,
+        to: [to],
+        reply_to: data.email,
+        subject: `Website enquiry: ${data.subject}`,
+        text: [
+          `Name: ${data.name}`,
+          `Email: ${data.email}`,
+          `Phone: ${data.phone || "Not provided"}`,
+          `Subject: ${data.subject}`,
+          "",
+          data.message,
+        ].join("\n"),
+      }),
+      signal: AbortSignal.timeout(8000),
+    });
+    return response.ok ? "sent" : "failed";
+  } catch {
+    return "failed";
+  }
+}
+
+async function sendWhatsApp(data: z.infer<typeof schema>): Promise<DeliveryStatus> {
+  const token = process.env.WHATSAPP_ACCESS_TOKEN;
+  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+  const templateName = process.env.WHATSAPP_TEMPLATE_NAME;
+  const recipient = (process.env.CONTACT_WHATSAPP_TO || "9676914932").replace(/\D/g, "");
+  const language = process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en";
+  if (!token || !phoneNumberId || !templateName || !recipient) return "not_configured";
+
+  try {
+    const response = await fetch(
+      `https://graph.facebook.com/v22.0/${encodeURIComponent(phoneNumberId)}/messages`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          messaging_product: "whatsapp",
+          recipient_type: "individual",
+          to: recipient,
+          type: "template",
+          template: {
+            name: templateName,
+            language: { code: language },
+            components: [
+              {
+                type: "body",
+                parameters: [
+                  { type: "text", text: data.name },
+                  { type: "text", text: data.email },
+                  { type: "text", text: data.phone || "Not provided" },
+                  { type: "text", text: data.subject },
+                  { type: "text", text: data.message.slice(0, 1000) },
+                ],
+              },
+            ],
+          },
+        }),
+        signal: AbortSignal.timeout(8000),
+      },
+    );
+    return response.ok ? "sent" : "failed";
+  } catch {
+    return "failed";
   }
 }
 
@@ -36,9 +118,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ message: "The submitted message is too large." }, { status: 413 });
   }
 
-  const forwardedFor = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
-  const remoteAddress = request.headers.get("x-real-ip")?.trim();
-  const clientId = forwardedFor || remoteAddress;
+  const clientId =
+    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    request.headers.get("x-real-ip")?.trim();
   if (!clientId) {
     return NextResponse.json({ message: "We couldn’t verify this request. Please try again." }, { status: 400 });
   }
@@ -47,7 +129,6 @@ export async function POST(request: NextRequest) {
   if (recent.length >= maxSubmissions) {
     return NextResponse.json({ message: "Please wait a few minutes before sending another enquiry." }, { status: 429 });
   }
-  submissions.set(clientId, [...recent, now]);
 
   let body: unknown;
   try {
@@ -62,41 +143,25 @@ export async function POST(request: NextRequest) {
   if (parsed.data.website) {
     return NextResponse.json({ message: "Your enquiry could not be accepted." }, { status: 400 });
   }
+  submissions.set(clientId, [...recent, now]);
 
-  const apiKey = process.env.RESEND_API_KEY;
-  const to = process.env.CONTACT_TO_EMAIL;
-  const from = process.env.CONTACT_FROM_EMAIL;
-  if (!apiKey || !to || !from) {
-    return NextResponse.json(
-      { message: "Enquiry delivery is not configured yet. Please contact the company using its published contact details." },
-      { status: 503 },
-    );
-  }
-
-  try {
-    const response = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        from,
-        to: [to],
-        reply_to: parsed.data.email,
-        subject: `Website enquiry: ${parsed.data.subject}`,
-        text: [
-          `Name: ${parsed.data.name}`,
-          `Email: ${parsed.data.email}`,
-          `Phone: ${parsed.data.phone || "Not provided"}`,
-          "",
-          parsed.data.message,
-        ].join("\n"),
-      }),
-      signal: AbortSignal.timeout(8000),
+  const [email, whatsapp] = await Promise.all([
+    sendEmail(parsed.data),
+    sendWhatsApp(parsed.data),
+  ]);
+  const deliveries = { email, whatsapp };
+  if (email === "sent" || whatsapp === "sent") {
+    return NextResponse.json({
+      message: "Your enquiry was received. Check the delivery status for each contact method.",
+      deliveries,
     });
-    if (!response.ok) {
-      return NextResponse.json({ message: "We couldn’t deliver your enquiry. Please try again later." }, { status: 502 });
-    }
-    return NextResponse.json({ message: "Thank you. Your enquiry has been sent successfully." });
-  } catch {
-    return NextResponse.json({ message: "We couldn’t reach the email service. Please try again later." }, { status: 502 });
   }
+
+  return NextResponse.json(
+    {
+      message: "Your enquiry could not be delivered automatically. Please use the WhatsApp option below or try again later.",
+      deliveries,
+    },
+    { status: 502 },
+  );
 }

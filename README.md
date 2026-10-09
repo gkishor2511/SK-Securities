@@ -40,6 +40,11 @@ npm run build
 | `RESEND_API_KEY` | Optional server-side Resend credential for contact enquiry delivery. |
 | `CONTACT_TO_EMAIL` | Verified company inbox that receives enquiries. |
 | `CONTACT_FROM_EMAIL` | Sender identity verified with the email provider. |
+| `WHATSAPP_ACCESS_TOKEN` | Server-side Meta WhatsApp Cloud API access token. Keep it secret; never use a `NEXT_PUBLIC_` prefix. |
+| `WHATSAPP_PHONE_NUMBER_ID` | Meta WhatsApp Business Platform phone-number ID used to send notification templates. |
+| `WHATSAPP_TEMPLATE_NAME` | Name of a Meta-approved template whose body has five text placeholders, in order: name, email, phone, subject, message. |
+| `WHATSAPP_TEMPLATE_LANGUAGE` | Approved template language code (defaults to `en`). |
+| `CONTACT_WHATSAPP_TO` | WhatsApp recipient in international digits-only format (defaults to `919676914932`, India country code plus the supplied number). |
 | `NEXT_PUBLIC_COMPANY_EMAIL` | Public company email shown on the website (defaults to `reddykishor555@gmail.com`). |
 | `NEXT_PUBLIC_COMPANY_PHONE` | Public company telephone (defaults to `9676914932`). |
 | `NEXT_PUBLIC_COMPANY_ADDRESS` | Public company location (defaults to `Rayadurg`; this is not represented as a full registered address). |
@@ -52,7 +57,7 @@ npm run build
 
 ## Contact enquiries
 
-The contact endpoint validates submitted fields on the server, checks same-host origins when an Origin header is present, applies a lightweight per-process submission throttle and honeypot, and sends through Resend only when all delivery settings are present. Configure a production-grade shared rate limiter (for example, an appropriately configured Vercel Firewall or managed KV) before launch; serverless in-memory limits are best-effort and are not shared across instances. The application does not store submissions in a database.
+The contact endpoint validates submitted fields on the server, checks same-host origins when an Origin header is present, applies a lightweight per-process submission throttle and honeypot, then attempts email and WhatsApp delivery independently. Email uses Resend. WhatsApp uses Meta’s Cloud API and requires an approved utility template with five text placeholders; obtain valid business credentials and use the recipient in international digits-only format. If automatic WhatsApp delivery is not configured or fails, the form offers a prefilled `wa.me` link for the visitor to send manually. The form shows each channel’s delivery status and never reports an undelivered message as sent. Configure a production-grade shared rate limiter (for example, an appropriately configured Vercel Firewall or managed KV) before launch; serverless in-memory limits are best-effort and are not shared across instances. The application does not store submissions in a database.
 
 ## Deploy to Vercel
 
@@ -69,6 +74,7 @@ The contact endpoint validates submitted fields on the server, checks same-host 
 - Confirm whether actual services could constitute regulated research analyst, investment advisory, or other regulated activity; implement required disclosures, processes, and controls before offering them.
 - Obtain and verify all market-data/API credentials, exchange coverage, licensing and display/redistribution permissions, provider attribution and delay requirements.
 - Configure and verify Resend sender domain, recipient address, delivery monitoring, and abuse protection.
+- Configure Meta WhatsApp Business Cloud API credentials, an approved five-variable enquiry notification template, recipient number in international format, and delivery monitoring.
 - Confirm retention/deletion and data-rights procedures for enquiries; publish a privacy contact.
 - Replace demonstration educational articles with reviewed, sourced content before presenting any article as company research. The included samples are labelled as demonstrations.
 - Add verified IPO data source and validate official issue details before displaying offerings; no data is fabricated when absent.
